@@ -12,6 +12,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ahash"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91429305e9f0a25f6205c5b8e0d2db09e0708a7a6df0f42212bb56c32c8ac97a"
+dependencies = [
+ "cfg-if",
+ "once_cell",
+ "version_check",
+ "zerocopy",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -28,10 +40,17 @@ dependencies = [
  "bitmap-allocator",
  "buddy_system_allocator",
  "criterion",
+ "linked_list_allocator",
  "rand",
  "rlsf",
  "slab_allocator",
 ]
+
+[[package]]
+name = "allocator-api2"
+version = "0.2.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0942ffc6dcaadf03badf6e6a2d0228460359d5e34b57ccdc720b7382dfbd5ec5"
 
 [[package]]
 name = "android-tzdata"
@@ -249,6 +268,7 @@ dependencies = [
  "allocator",
  "axerrno",
  "cfg-if",
+ "hashbrown",
  "log",
  "memory_addr",
  "spinlock",
@@ -471,6 +491,7 @@ dependencies = [
  "axerrno",
  "axfeat",
  "axio",
+ "hashbrown",
  "spinlock",
 ]
 
@@ -1050,9 +1071,13 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.14.0"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c6201b9ff9fd90a5a3bac2e56a830d0caa509576f0e503818ee82c181b3437a"
+checksum = "290f1a1d9242c78d09ce40a5e87e7554ee637af1351968159f4952f028f75604"
+dependencies = [
+ "ahash",
+ "allocator-api2",
+]
 
 [[package]]
 name = "heapless"
@@ -1199,6 +1224,15 @@ dependencies = [
 [[package]]
 name = "linked_list"
 version = "0.1.0"
+
+[[package]]
+name = "linked_list_allocator"
+version = "0.10.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9afa463f5405ee81cdb9cc2baf37e08ec7e4c8209442b5d72c04cfb2cd6e6286"
+dependencies = [
+ "spinning_top",
+]
 
 [[package]]
 name = "linux-raw-sys"
@@ -1743,6 +1777,15 @@ version = "0.1.0"
 dependencies = [
  "cfg-if",
  "kernel_guard",
+]
+
+[[package]]
+name = "spinning_top"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b9eb1a2f4c41445a3a0ff9abc5221c5fcd28e1f13cd7c0397706f9ac938ddb0"
+dependencies = [
+ "lock_api",
 ]
 
 [[package]]

@@ -1,0 +1,466 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 44fd07c8..003dfe91 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -11,6 +11,18 @@ dependencies = [
+  "tock-registers",
+ ]
+ 
++[[package]]
++name = "ahash"
++version = "0.8.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "91429305e9f0a25f6205c5b8e0d2db09e0708a7a6df0f42212bb56c32c8ac97a"
++dependencies = [
++ "cfg-if",
++ "once_cell",
++ "version_check",
++ "zerocopy",
++]
++
+ [[package]]
+ name = "aho-corasick"
+ version = "1.0.4"
+@@ -28,11 +40,18 @@ dependencies = [
+  "bitmap-allocator",
+  "buddy_system_allocator",
+  "criterion",
++ "linked_list_allocator",
+  "rand",
+  "rlsf",
+  "slab_allocator",
+ ]
+ 
++[[package]]
++name = "allocator-api2"
++version = "0.2.16"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "0942ffc6dcaadf03badf6e6a2d0228460359d5e34b57ccdc720b7382dfbd5ec5"
++
+ [[package]]
+ name = "android-tzdata"
+ version = "0.1.1"
+@@ -249,6 +268,7 @@ dependencies = [
+  "allocator",
+  "axerrno",
+  "cfg-if",
++ "hashbrown",
+  "log",
+  "memory_addr",
+  "spinlock",
+@@ -471,6 +491,7 @@ dependencies = [
+  "axerrno",
+  "axfeat",
+  "axio",
++ "hashbrown",
+  "spinlock",
+ ]
+ 
+@@ -1050,9 +1071,13 @@ dependencies = [
+ 
+ [[package]]
+ name = "hashbrown"
+-version = "0.14.0"
++version = "0.14.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "2c6201b9ff9fd90a5a3bac2e56a830d0caa509576f0e503818ee82c181b3437a"
++checksum = "290f1a1d9242c78d09ce40a5e87e7554ee637af1351968159f4952f028f75604"
++dependencies = [
++ "ahash",
++ "allocator-api2",
++]
+ 
+ [[package]]
+ name = "heapless"
+@@ -1200,6 +1225,15 @@ dependencies = [
+ name = "linked_list"
+ version = "0.1.0"
+ 
++[[package]]
++name = "linked_list_allocator"
++version = "0.10.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "9afa463f5405ee81cdb9cc2baf37e08ec7e4c8209442b5d72c04cfb2cd6e6286"
++dependencies = [
++ "spinning_top",
++]
++
+ [[package]]
+ name = "linux-raw-sys"
+ version = "0.4.5"
+@@ -1745,6 +1779,15 @@ dependencies = [
+  "kernel_guard",
+ ]
+ 
++[[package]]
++name = "spinning_top"
++version = "0.2.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "5b9eb1a2f4c41445a3a0ff9abc5221c5fcd28e1f13cd7c0397706f9ac938ddb0"
++dependencies = [
++ "lock_api",
++]
++
+ [[package]]
+ name = "stable_deref_trait"
+ version = "1.2.0"
+diff --git a/api/axfeat/Cargo.toml b/api/axfeat/Cargo.toml
+index 2947a7ea..8c46c229 100644
+--- a/api/axfeat/Cargo.toml
++++ b/api/axfeat/Cargo.toml
+@@ -26,6 +26,7 @@ alloc = ["axalloc", "axruntime/alloc"]
+ alloc-tlsf = ["axalloc/tlsf"]
+ alloc-slab = ["axalloc/slab"]
+ alloc-buddy = ["axalloc/buddy"]
++alloc-new = ["axalloc/new"]
+ paging = ["alloc", "axhal/paging", "axruntime/paging"]
+ tls = ["alloc", "axhal/tls", "axruntime/tls", "axtask?/tls"]
+ 
+diff --git a/apps/memtest/src/main.rs b/apps/memtest/src/main.rs
+index e23e95e7..c05bc5cc 100644
+--- a/apps/memtest/src/main.rs
++++ b/apps/memtest/src/main.rs
+@@ -6,7 +6,7 @@
+ extern crate axstd as std;
+ 
+ use rand::{rngs::SmallRng, RngCore, SeedableRng};
+-use std::collections::BTreeMap;
++use std::collections::HashMap;
+ use std::vec::Vec;
+ 
+ fn test_vec(rng: &mut impl RngCore) {
+@@ -22,9 +22,9 @@ fn test_vec(rng: &mut impl RngCore) {
+     println!("test_vec() OK!");
+ }
+ 
+-fn test_btree_map(rng: &mut impl RngCore) {
++fn test_hashmap_map(rng: &mut impl RngCore) {
+     const N: usize = 50_000;
+-    let mut m = BTreeMap::new();
++    let mut m = HashMap::new();
+     for _ in 0..N {
+         let value = rng.next_u32();
+         let key = format!("key_{value}");
+@@ -35,7 +35,7 @@ fn test_btree_map(rng: &mut impl RngCore) {
+             assert_eq!(k.parse::<u32>().unwrap(), *v);
+         }
+     }
+-    println!("test_btree_map() OK!");
++    println!("test_hashmap_map() OK!");
+ }
+ 
+ #[cfg_attr(feature = "axstd", no_mangle)]
+@@ -44,7 +44,7 @@ fn main() {
+ 
+     let mut rng = SmallRng::seed_from_u64(0xdead_beef);
+     test_vec(&mut rng);
+-    test_btree_map(&mut rng);
++    test_hashmap_map(&mut rng);
+ 
+     println!("Memory tests run OK!");
+ }
+diff --git a/crates/allocator/Cargo.toml b/crates/allocator/Cargo.toml
+index b8770f12..7ab2b432 100644
+--- a/crates/allocator/Cargo.toml
++++ b/crates/allocator/Cargo.toml
+@@ -11,13 +11,14 @@ documentation = "https://rcore-os.github.io/arceos/allocator/index.html"
+ 
+ [features]
+ default = []
+-full = ["bitmap", "tlsf", "slab", "buddy", "allocator_api"]
++full = ["bitmap", "tlsf", "slab", "buddy", "new", "allocator_api"]
+ 
+ bitmap = ["dep:bitmap-allocator"]
+ 
+ tlsf = ["dep:rlsf"]
+ slab = ["dep:slab_allocator"]
+ buddy = ["dep:buddy_system_allocator"]
++new = ["dep:linked_list_allocator"]
+ 
+ allocator_api = []
+ 
+@@ -26,6 +27,7 @@ buddy_system_allocator = { version = "0.9", default-features = false, optional =
+ slab_allocator = { path = "../slab_allocator", optional = true }
+ rlsf = { version = "0.2", optional = true }
+ bitmap-allocator = { git = "https://github.com/rcore-os/bitmap-allocator.git", rev = "88e871a", optional = true }
++linked_list_allocator = { version = "0.10.5", optional = true }
+ 
+ [dev-dependencies]
+ allocator = { path = ".", features = ["full"] }
+diff --git a/crates/allocator/src/lib.rs b/crates/allocator/src/lib.rs
+index 7a79161d..d03e9328 100644
+--- a/crates/allocator/src/lib.rs
++++ b/crates/allocator/src/lib.rs
+@@ -31,6 +31,11 @@ mod tlsf;
+ #[cfg(feature = "tlsf")]
+ pub use tlsf::TlsfByteAllocator;
+ 
++#[cfg(feature = "new")]
++mod new;
++#[cfg(feature = "new")]
++pub use new::LinkedListAllocator;
++
+ use core::alloc::Layout;
+ use core::ptr::NonNull;
+ 
+diff --git a/huchangjing-lesson1.patch b/huchangjing-lesson1.patch
+new file mode 100644
+index 00000000..711a9d21
+--- /dev/null
++++ b/huchangjing-lesson1.patch
+@@ -0,0 +1,179 @@
++diff --git a/Cargo.lock b/Cargo.lock
++index 44fd07c8..82be2a52 100644
++--- a/Cargo.lock
+++++ b/Cargo.lock
++@@ -11,6 +11,18 @@ dependencies = [
++  "tock-registers",
++ ]
++ 
+++[[package]]
+++name = "ahash"
+++version = "0.8.6"
+++source = "registry+https://github.com/rust-lang/crates.io-index"
+++checksum = "91429305e9f0a25f6205c5b8e0d2db09e0708a7a6df0f42212bb56c32c8ac97a"
+++dependencies = [
+++ "cfg-if",
+++ "once_cell",
+++ "version_check",
+++ "zerocopy",
+++]
+++
++ [[package]]
++ name = "aho-corasick"
++ version = "1.0.4"
++@@ -33,6 +45,12 @@ dependencies = [
++  "slab_allocator",
++ ]
++ 
+++[[package]]
+++name = "allocator-api2"
+++version = "0.2.16"
+++source = "registry+https://github.com/rust-lang/crates.io-index"
+++checksum = "0942ffc6dcaadf03badf6e6a2d0228460359d5e34b57ccdc720b7382dfbd5ec5"
+++
++ [[package]]
++ name = "android-tzdata"
++ version = "0.1.1"
++@@ -249,6 +267,7 @@ dependencies = [
++  "allocator",
++  "axerrno",
++  "cfg-if",
+++ "hashbrown",
++  "log",
++  "memory_addr",
++  "spinlock",
++@@ -471,6 +490,7 @@ dependencies = [
++  "axerrno",
++  "axfeat",
++  "axio",
+++ "hashbrown",
++  "spinlock",
++ ]
++ 
++@@ -1050,9 +1070,13 @@ dependencies = [
++ 
++ [[package]]
++ name = "hashbrown"
++-version = "0.14.0"
+++version = "0.14.3"
++ source = "registry+https://github.com/rust-lang/crates.io-index"
++-checksum = "2c6201b9ff9fd90a5a3bac2e56a830d0caa509576f0e503818ee82c181b3437a"
+++checksum = "290f1a1d9242c78d09ce40a5e87e7554ee637af1351968159f4952f028f75604"
+++dependencies = [
+++ "ahash",
+++ "allocator-api2",
+++]
++ 
++ [[package]]
++ name = "heapless"
++diff --git a/apps/memtest/src/main.rs b/apps/memtest/src/main.rs
++index e23e95e7..c05bc5cc 100644
++--- a/apps/memtest/src/main.rs
+++++ b/apps/memtest/src/main.rs
++@@ -6,7 +6,7 @@
++ extern crate axstd as std;
++ 
++ use rand::{rngs::SmallRng, RngCore, SeedableRng};
++-use std::collections::BTreeMap;
+++use std::collections::HashMap;
++ use std::vec::Vec;
++ 
++ fn test_vec(rng: &mut impl RngCore) {
++@@ -22,9 +22,9 @@ fn test_vec(rng: &mut impl RngCore) {
++     println!("test_vec() OK!");
++ }
++ 
++-fn test_btree_map(rng: &mut impl RngCore) {
+++fn test_hashmap_map(rng: &mut impl RngCore) {
++     const N: usize = 50_000;
++-    let mut m = BTreeMap::new();
+++    let mut m = HashMap::new();
++     for _ in 0..N {
++         let value = rng.next_u32();
++         let key = format!("key_{value}");
++@@ -35,7 +35,7 @@ fn test_btree_map(rng: &mut impl RngCore) {
++             assert_eq!(k.parse::<u32>().unwrap(), *v);
++         }
++     }
++-    println!("test_btree_map() OK!");
+++    println!("test_hashmap_map() OK!");
++ }
++ 
++ #[cfg_attr(feature = "axstd", no_mangle)]
++@@ -44,7 +44,7 @@ fn main() {
++ 
++     let mut rng = SmallRng::seed_from_u64(0xdead_beef);
++     test_vec(&mut rng);
++-    test_btree_map(&mut rng);
+++    test_hashmap_map(&mut rng);
++ 
++     println!("Memory tests run OK!");
++ }
++diff --git a/huchangjing-lesson1.patch b/huchangjing-lesson1.patch
++new file mode 100644
++index 00000000..e69de29b
++diff --git a/modules/axalloc/Cargo.toml b/modules/axalloc/Cargo.toml
++index 40eedf40..9b9be8c0 100644
++--- a/modules/axalloc/Cargo.toml
+++++ b/modules/axalloc/Cargo.toml
++@@ -16,6 +16,7 @@ slab = ["allocator/slab"]
++ buddy = ["allocator/buddy"]
++ 
++ [dependencies]
+++hashbrown = "0.14.3"
++ log = "0.4"
++ cfg-if = "1.0"
++ spinlock = { path = "../../crates/spinlock" }
++diff --git a/ulib/axstd/Cargo.toml b/ulib/axstd/Cargo.toml
++index 83239c3e..b82c9d62 100644
++--- a/ulib/axstd/Cargo.toml
+++++ b/ulib/axstd/Cargo.toml
++@@ -74,3 +74,4 @@ arceos_api = { path = "../../api/arceos_api" }
++ axio = { path = "../../crates/axio" }
++ axerrno = { path = "../../crates/axerrno" }
++ spinlock = { path = "../../crates/spinlock" }
+++hashbrown = "0.14.3"
++diff --git a/ulib/axstd/src/collections/mod.rs b/ulib/axstd/src/collections/mod.rs
++new file mode 100644
++index 00000000..d48bdc1a
++--- /dev/null
+++++ b/ulib/axstd/src/collections/mod.rs
++@@ -0,0 +1,4 @@
+++#![no_std]
+++extern crate alloc;
+++pub use alloc::collections::*;
+++pub use hashbrown::HashMap;
++diff --git a/ulib/axstd/src/lib.rs b/ulib/axstd/src/lib.rs
++index d256cd52..7e014335 100644
++--- a/ulib/axstd/src/lib.rs
+++++ b/ulib/axstd/src/lib.rs
++@@ -49,13 +49,20 @@
++ #![cfg_attr(all(not(test), not(doc)), no_std)]
++ #![feature(doc_cfg)]
++ #![feature(doc_auto_cfg)]
+++#![feature(hashmap_internals)]
+++#![feature(extend_one)]
+++#![feature(hasher_prefixfree_extras)]
+++#![feature(error_in_core)]
+++#![feature(try_reserve_kind)]
+++#![feature(thread_local)]
+++#![feature(const_hash)]
++ 
++ #[cfg(feature = "alloc")]
++ extern crate alloc;
++ 
++ #[cfg(feature = "alloc")]
++ #[doc(no_inline)]
++-pub use alloc::{boxed, collections, format, string, vec};
+++pub use alloc::{boxed, format, string, vec};
++ 
++ #[doc(no_inline)]
++ pub use core::{arch, cell, cmp, hint, marker, mem, ops, ptr, slice, str};
++@@ -63,6 +70,7 @@ pub use core::{arch, cell, cmp, hint, marker, mem, ops, ptr, slice, str};
++ #[macro_use]
++ mod macros;
++ 
+++pub mod collections;
++ pub mod env;
++ pub mod io;
++ pub mod os;
+diff --git a/modules/axalloc/Cargo.toml b/modules/axalloc/Cargo.toml
+index 40eedf40..53f9fc6e 100644
+--- a/modules/axalloc/Cargo.toml
++++ b/modules/axalloc/Cargo.toml
+@@ -14,8 +14,10 @@ default = ["tlsf"]
+ tlsf = ["allocator/tlsf"]
+ slab = ["allocator/slab"]
+ buddy = ["allocator/buddy"]
++new = ["allocator/new"]
+ 
+ [dependencies]
++hashbrown = "0.14.3"
+ log = "0.4"
+ cfg-if = "1.0"
+ spinlock = { path = "../../crates/spinlock" }
+diff --git a/ulib/axstd/Cargo.toml b/ulib/axstd/Cargo.toml
+index 83239c3e..33b87a84 100644
+--- a/ulib/axstd/Cargo.toml
++++ b/ulib/axstd/Cargo.toml
+@@ -33,6 +33,7 @@ alloc = ["arceos_api/alloc", "axfeat/alloc", "axio/alloc"]
+ alloc-tlsf = ["axfeat/alloc-tlsf"]
+ alloc-slab = ["axfeat/alloc-slab"]
+ alloc-buddy = ["axfeat/alloc-buddy"]
++alloc-new = ["axfeat/alloc-new"]
+ paging = ["axfeat/paging"]
+ tls = ["axfeat/tls"]
+ 
+@@ -74,3 +75,4 @@ arceos_api = { path = "../../api/arceos_api" }
+ axio = { path = "../../crates/axio" }
+ axerrno = { path = "../../crates/axerrno" }
+ spinlock = { path = "../../crates/spinlock" }
++hashbrown = "0.14.3"
+diff --git a/ulib/axstd/src/collections/mod.rs b/ulib/axstd/src/collections/mod.rs
+new file mode 100644
+index 00000000..d48bdc1a
+--- /dev/null
++++ b/ulib/axstd/src/collections/mod.rs
+@@ -0,0 +1,4 @@
++#![no_std]
++extern crate alloc;
++pub use alloc::collections::*;
++pub use hashbrown::HashMap;
+diff --git a/ulib/axstd/src/lib.rs b/ulib/axstd/src/lib.rs
+index d256cd52..7e014335 100644
+--- a/ulib/axstd/src/lib.rs
++++ b/ulib/axstd/src/lib.rs
+@@ -49,13 +49,20 @@
+ #![cfg_attr(all(not(test), not(doc)), no_std)]
+ #![feature(doc_cfg)]
+ #![feature(doc_auto_cfg)]
++#![feature(hashmap_internals)]
++#![feature(extend_one)]
++#![feature(hasher_prefixfree_extras)]
++#![feature(error_in_core)]
++#![feature(try_reserve_kind)]
++#![feature(thread_local)]
++#![feature(const_hash)]
+ 
+ #[cfg(feature = "alloc")]
+ extern crate alloc;
+ 
+ #[cfg(feature = "alloc")]
+ #[doc(no_inline)]
+-pub use alloc::{boxed, collections, format, string, vec};
++pub use alloc::{boxed, format, string, vec};
+ 
+ #[doc(no_inline)]
+ pub use core::{arch, cell, cmp, hint, marker, mem, ops, ptr, slice, str};
+@@ -63,6 +70,7 @@ pub use core::{arch, cell, cmp, hint, marker, mem, ops, ptr, slice, str};
+ #[macro_use]
+ mod macros;
+ 
++pub mod collections;
+ pub mod env;
+ pub mod io;
+ pub mod os;
